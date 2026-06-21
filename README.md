@@ -1,4 +1,4 @@
-# Lisa: AI Voice Receptionist (Backend) 🎙️🏥
+# Lisa: AI Voice Assistant (Backend) 🎙️🏥
 
 A highly sophisticated, real-time Voice AI backend built for modern healthcare and appointment management. This system powers **Lisa**, an autonomous front-desk agent capable of understanding natural human speech, querying a live SQLite database, booking appointments, and generating structured call summaries on the fly.
 

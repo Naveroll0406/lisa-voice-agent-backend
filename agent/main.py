@@ -118,6 +118,7 @@
 
 import os
 import sys
+from datetime import datetime
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from dotenv import load_dotenv
 # pyrefly: ignore [missing-import]
@@ -142,6 +143,7 @@ from agent.tools import (
     cancel_appointment,
     modify_appointment,
     end_conversation,
+    restart_session,
 )
 
 load_dotenv()
@@ -149,8 +151,12 @@ load_dotenv()
 
 class LisaAssistant(Agent):
     def __init__(self):
+        # Inject the real-time date into the prompt so the LLM always knows what "today" or "tomorrow" is
+        current_date = datetime.now().strftime("%A, %B %d, %Y")
+        dynamic_prompt = f"{SYSTEM_PROMPT}\n\n=====================\nCURRENT DATE\n=====================\nToday is {current_date}. Resolve all relative dates (like 'tomorrow' or 'next Tuesday') using this as the baseline."
+        
         super().__init__(
-            instructions=SYSTEM_PROMPT,
+            instructions=dynamic_prompt,
             tools=[
                 identify_user,
                 fetch_slots,
@@ -159,6 +165,7 @@ class LisaAssistant(Agent):
                 cancel_appointment,
                 modify_appointment,
                 end_conversation,
+                restart_session,
             ],
         )
 
@@ -201,7 +208,7 @@ async def entrypoint(ctx: JobContext):
         instructions="""
         Greet the user warmly.
         Introduce yourself as Lisa.
-        IMMEDIATELY ask the user for their phone number so you can pull up their records.
+        Ask them how you can help them with their medical appointments today.
         Keep the greeting brief and direct.
         """
     )

@@ -1,6 +1,8 @@
 import os
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+# pyrefly: ignore [missing-import]
+from fastapi.middleware.cors import CORSMiddleware  
 from sqlalchemy.orm import Session
 
 # Import with absolute path relative to the backend folder
@@ -11,7 +13,7 @@ from dotenv import load_dotenv
 ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
 load_dotenv(dotenv_path=ENV_PATH)
 
-app = FastAPI(title="Mykare Voice AI Backend")
+app = FastAPI(title="Lisa Voice AI Backend")
 
 # Allow frontend requests
 app.add_middleware(
@@ -24,7 +26,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "Mykare Voice AI Backend is running"}
+    return {"status": "ok", "message": "Lisa Voice AI Backend is running"}
 
 @app.get("/api/history/{phone_number}")
 def get_history(phone_number: str, db: Session = Depends(get_db)):

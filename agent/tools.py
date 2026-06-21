@@ -42,6 +42,7 @@ async def publish_tool_call(status: str, tool: str, label: str):
 def _identify_user(phone_number: str):
     db = get_db()
     try:
+        from datetime import datetime
         user = db.query(User).filter(User.phone_number == phone_number).first()
         if not user:
             user = User(phone_number=phone_number)
@@ -50,15 +51,20 @@ def _identify_user(phone_number: str):
             db.refresh(user)
             result = {
                 "status": "new_user",
-                "user_id": user.id,
+                "user_id": f"usr_{user.id}",
                 "phone_number": phone_number,
+                "created_at": user.created_at.strftime("%b %d, %Y") if user.created_at else datetime.now().strftime("%b %d, %Y"),
+                "total_appointments": 0
             }
         else:
+            apps_count = db.query(Appointment).filter(Appointment.user_id == user.id, Appointment.status == "booked").count()
             result = {
-                "status": "existing_user",
-                "user_id": user.id,
-                "name": user.name,
+                "status": "existing_user" if user.name else "new_user",
+                "user_id": f"usr_{user.id}",
+                "name": user.name or "Unknown",
                 "phone_number": user.phone_number,
+                "created_at": user.created_at.strftime("%b %d, %Y") if user.created_at else "Unknown",
+                "total_appointments": apps_count
             }
         return json.dumps(result)
     finally:
@@ -68,25 +74,37 @@ def _identify_user(phone_number: str):
 def _fetch_slots(date_str: str = ""):
     db = get_db()
     try:
-        query = db.query(Slot)
-        if date_str:
+        from datetime import datetime, time
+        
+        # If no date is specified, default to today
+        if not date_str:
+            d = datetime.now().date()
+            date_str = d.strftime("%Y-%m-%d")
+        else:
             try:
                 d = datetime.strptime(date_str, "%Y-%m-%d").date()
-                query = query.filter(Slot.slot_date == d)
             except ValueError:
-                pass
+                d = datetime.now().date()
+                date_str = d.strftime("%Y-%m-%d")
 
-        booked_apps = db.query(Appointment).filter(Appointment.status == "booked").all()
-        booked_set = {(app.slot_date, app.slot_time) for app in booked_apps}
+        # Dynamically assume 4 standard slots exist for ANY date
+        standard_times = [time(9, 0), time(11, 0), time(14, 0), time(16, 0)]
+
+        # Fetch globally booked appointments for this specific date
+        booked_apps = db.query(Appointment).filter(
+            Appointment.slot_date == d,
+            Appointment.status == "booked"
+        ).all()
+        booked_times = {app.slot_time for app in booked_apps}
 
         available = []
-        for slot in query.all():
-            if (slot.slot_date, slot.slot_time) not in booked_set:
-                available.append(f"{slot.slot_date} at {slot.slot_time}")
+        for t in standard_times:
+            if t not in booked_times:
+                available.append(f"{date_str} at {t.strftime('%H:%M:%S')}")
 
         if not available:
-            return "No slots available."
-        return "Available slots: " + ", ".join(available)
+            return f"No slots available on {date_str}."
+        return f"Available slots on {date_str}: " + ", ".join(available)
     finally:
         db.close()
 
@@ -118,7 +136,8 @@ def _book_appointment(phone_number: str, name: str, date_str: str, time_str: str
 
         db.add(appointment)
         db.commit()
-        return f"Successfully booked appointment for {date_str} at {time_str}."
+        name_prefix = f"[System Note: User name is {user.name or 'Unknown'}] "
+        return name_prefix + f"Successfully booked appointment for {date_str} at {time_str}."
     except IntegrityError:
         db.rollback()
         return "That slot is already booked. Double booking prevented!"
@@ -137,10 +156,11 @@ def _retrieve_appointments(phone_number: str):
             return "User not found."
 
         apps = db.query(Appointment).filter(Appointment.user_id == user.id, Appointment.status == "booked").all()
+        name_prefix = f"[System Note: User name is {user.name or 'Unknown'}] "
         if not apps:
-            return "No active appointments found."
+            return name_prefix + "No active appointments found."
 
-        return " | ".join([f"ID={a.id} (CRITICAL: DO NOT READ THIS ID ALOUD TO USER): {a.slot_date} at {a.slot_time}" for a in apps])
+        return name_prefix + " | ".join([f"ID={a.id} (CRITICAL: DO NOT READ THIS ID ALOUD TO USER): {a.slot_date} at {a.slot_time}" for a in apps])
     finally:
         db.close()
 
@@ -158,7 +178,8 @@ def _cancel_appointment(phone_number: str, appointment_id: int):
 
         app.status = "cancelled"
         db.commit()
-        return f"Appointment {appointment_id} cancelled."
+        name_prefix = f"[System Note: User name is {user.name or 'Unknown'}] "
+        return name_prefix + f"Appointment {appointment_id} has been cancelled successfully."
     finally:
         db.close()
 
@@ -181,7 +202,8 @@ def _modify_appointment(phone_number: str, appointment_id: int, new_date: str, n
             app.slot_time = datetime.strptime(new_time, "%H:%M").time()
 
         db.commit()
-        return f"Appointment {appointment_id} moved to {new_date} at {new_time}"
+        name_prefix = f"[System Note: User name is {user.name or 'Unknown'}] "
+        return name_prefix + f"Appointment {appointment_id} moved to {new_date} at {new_time}"
     except IntegrityError:
         db.rollback()
         return "That slot is already taken."
@@ -201,13 +223,28 @@ def _generate_summary_sync(transcript: str) -> str:
     }
     
     prompt = (
-        "You are an assistant creating a structured call summary. Based on the following transcript, "
-        "extract the following information:\n"
-        "- A brief 2-3 sentence summary of the conversation.\n"
-        "- A list of appointments booked, modified, or cancelled (if any).\n"
-        "- Any user preferences mentioned.\n"
-        "Return the output as plain, clean text formatting."
-    )
+    "You are a medical call summarization assistant.",
+    
+    "Generate a concise 2-3 sentence summary of the conversation.",
+
+    "List any appointment actions performed, including appointments booked, modified, or cancelled. "
+    "If there were no appointment changes, state 'No appointment changes.'",
+
+    "Extract any user preferences or special requests mentioned during the call. "
+    "If none were mentioned, state 'No preferences mentioned.'",
+
+    "Include a timestamp if available.",
+
+    "Return the output as clean, human-readable text using the following format:\n\n"
+    "Conversation Summary:\n"
+    "...\n\n"
+    "Appointment Actions:\n"
+    "- ...\n\n"
+    "User Preferences:\n"
+    "- ...\n\n"
+    "Timestamp:\n"
+    "..."
+)
     
     data = {
         "model": "openai/gpt-4o-mini",
@@ -229,11 +266,40 @@ def _generate_summary_sync(transcript: str) -> str:
 # LiveKit Tools
 # ==========================================================
 
+async def broadcast_user_profile(phone_number: str):
+    """Automatically fetch and broadcast the user profile to the frontend."""
+    if CURRENT_ROOM and CURRENT_ROOM.local_participant:
+        try:
+            res = _identify_user(phone_number)
+            profile_data = json.loads(res)
+            payload = json.dumps({"type": "user_info", "data": profile_data})
+            await CURRENT_ROOM.local_participant.publish_data(payload.encode("utf-8"))
+        except Exception as e:
+            print(f"Error publishing user_info: {e}")
+
+def check_authentication():
+    if CURRENT_SESSION and not getattr(CURRENT_SESSION, "authenticated", False):
+        return "CRITICAL ERROR: You MUST call identify_user FIRST to authenticate the caller before taking any action. Call identify_user now!"
+    return None
+
 @function_tool
 async def identify_user(phone_number: str):
+    if CURRENT_SESSION:
+        CURRENT_SESSION.authenticated = True
+        
     await publish_tool_call("running", "identify_user", f"Identifying user: {phone_number}...")
     res = _identify_user(phone_number)
     await publish_tool_call("done", "identify_user", "User identified ✅")
+    
+    # Broadcast the profile to the frontend
+    if CURRENT_ROOM and CURRENT_ROOM.local_participant:
+        try:
+            profile_data = json.loads(res)
+            payload = json.dumps({"type": "user_info", "data": profile_data})
+            await CURRENT_ROOM.local_participant.publish_data(payload.encode("utf-8"))
+        except Exception as e:
+            print(f"Error publishing user_info: {e}")
+            
     return res
 
 
@@ -253,6 +319,10 @@ async def book_appointment(
     time_str: str,
     intent: str,
 ):
+    auth_err = check_authentication()
+    if auth_err: return auth_err
+
+    await broadcast_user_profile(phone_number)
     await publish_tool_call("running", "book_appointment", "Booking your appointment...")
     res = _book_appointment(phone_number, name, date_str, time_str, intent)
     await publish_tool_call("done", "book_appointment", "Booking confirmed ✅")
@@ -261,6 +331,10 @@ async def book_appointment(
 
 @function_tool
 async def retrieve_appointments(phone_number: str):
+    auth_err = check_authentication()
+    if auth_err: return auth_err
+
+    await broadcast_user_profile(phone_number)
     await publish_tool_call("running", "retrieve_appointments", "Retrieving past appointments...")
     res = _retrieve_appointments(phone_number)
     await publish_tool_call("done", "retrieve_appointments", "Past bookings loaded ✅")
@@ -269,6 +343,10 @@ async def retrieve_appointments(phone_number: str):
 
 @function_tool
 async def cancel_appointment(phone_number: str, appointment_id: int):
+    auth_err = check_authentication()
+    if auth_err: return auth_err
+
+    await broadcast_user_profile(phone_number)
     await publish_tool_call("running", "cancel_appointment", f"Cancelling appointment {appointment_id}...")
     res = _cancel_appointment(phone_number, appointment_id)
     await publish_tool_call("done", "cancel_appointment", "Appointment cancelled ❌")
@@ -277,11 +355,26 @@ async def cancel_appointment(phone_number: str, appointment_id: int):
 
 @function_tool
 async def modify_appointment(phone_number: str, appointment_id: int, new_date: str, new_time: str):
-    await publish_tool_call("running", "modify_appointment", "Rescheduling appointment...")
+    auth_err = check_authentication()
+    if auth_err: return auth_err
+
+    await broadcast_user_profile(phone_number)
+    await publish_tool_call("running", "modify_appointment", f"Modifying appointment {appointment_id}...")
     res = _modify_appointment(phone_number, appointment_id, new_date, new_time)
     await publish_tool_call("done", "modify_appointment", "Appointment rescheduled 🔄")
     return res
 
+
+@function_tool
+async def restart_session():
+    """Resets the current conversation and triggers a frontend reload to start a fresh call."""
+    if CURRENT_ROOM and CURRENT_ROOM.local_participant:
+        try:
+            payload = json.dumps({"type": "action", "action": "reload"})
+            await CURRENT_ROOM.local_participant.publish_data(payload.encode("utf-8"))
+        except Exception as e:
+            print(f"Error publishing reload action: {e}")
+    return "Session has been reset. Wait for the user to reconnect."
 
 @function_tool
 async def end_conversation():
@@ -320,28 +413,12 @@ async def end_conversation():
     # 2. Generate Summary via LLM (in background thread so we don't block event loop)
     summary_text = await asyncio.to_thread(_generate_summary_sync, transcript)
     
-    # 3. Calculate Cost Breakdown
-    # Using dummy industry-standard estimates for this hackathon
-    llm_cost = word_count * 0.0001
-    tts_cost = word_count * 0.0003
-    stt_cost = word_count * 0.0002
-    total_cost = llm_cost + tts_cost + stt_cost
-    
-    cost_breakdown = (
-        f"Cost Breakdown:\n"
-        f"- LLM Tokens: ${llm_cost:.4f}\n"
-        f"- Cartesia TTS: ${tts_cost:.4f}\n"
-        f"- Deepgram STT: ${stt_cost:.4f}\n"
-        f"Total Call Cost: ${total_cost:.4f}"
-    )
-    
-    # 4. Publish Summary to UI
+    # 3. Publish Summary to UI
     if CURRENT_ROOM and CURRENT_ROOM.local_participant:
         try:
             payload = json.dumps({
                 "type": "summary", 
                 "data": summary_text, 
-                "cost": cost_breakdown,
                 "timestamp": datetime.now().isoformat()
             })
             await CURRENT_ROOM.local_participant.publish_data(payload.encode("utf-8"))
