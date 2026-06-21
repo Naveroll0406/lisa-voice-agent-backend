@@ -222,29 +222,28 @@ def _generate_summary_sync(transcript: str) -> str:
         "Content-Type": "application/json"
     }
     
-    prompt = (
-    "You are a medical call summarization assistant.",
-    
-    "Generate a concise 2-3 sentence summary of the conversation.",
+    prompt = """
+You are a medical call summarization assistant.
 
-    "List any appointment actions performed, including appointments booked, modified, or cancelled. "
-    "If there were no appointment changes, state 'No appointment changes.'",
+Generate a concise 2-3 sentence summary of the conversation.
+List any appointment actions performed, including appointments booked, modified, or cancelled. If there were no appointment changes, state 'No appointment changes.'
+Extract any user preferences or special requests mentioned during the call. If none were mentioned, state 'No preferences mentioned.'
+Include a timestamp if available.
 
-    "Extract any user preferences or special requests mentioned during the call. "
-    "If none were mentioned, state 'No preferences mentioned.'",
+Return the output as clean, human-readable text using the following format:
 
-    "Include a timestamp if available.",
+Conversation Summary:
+...
 
-    "Return the output as clean, human-readable text using the following format:\n\n"
-    "Conversation Summary:\n"
-    "...\n\n"
-    "Appointment Actions:\n"
-    "- ...\n\n"
-    "User Preferences:\n"
-    "- ...\n\n"
-    "Timestamp:\n"
-    "..."
-)
+Appointment Actions:
+- ...
+
+User Preferences:
+- ...
+
+Timestamp:
+...
+"""
     
     data = {
         "model": "openai/gpt-4o-mini",
