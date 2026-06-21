@@ -21,7 +21,7 @@ A highly sophisticated, real-time Voice AI backend built for modern healthcare a
 
 1. **Clone the repository and enter the directory:**
    ```bash
-   cd mykare-voice-backend
+   cd lisa-voice-backend
    ```
 
 2. **Set up a virtual environment and install dependencies:**
@@ -60,13 +60,14 @@ The agent will connect to the LiveKit Cloud room and wait for incoming web conne
 ## 🧩 Tool Calling Architecture
 
 Lisa is equipped with the following strict deterministic tools:
-- `identify_user(phone_number, name)`
+- `identify_user(phone_number)` -> Features a strict Authentication Lock to prevent LLM hallucination and ensure User Profile data is securely broadcasted before allowing other tools to execute.
 - `fetch_slots(date_str)`
 - `book_appointment(phone_number, name, date_str, time_str, intent)`
 - `retrieve_appointments(phone_number)`
-- `cancel_appointment(phone_number, date_str, time_str)`
-- `modify_appointment(phone_number, old_date, old_time, new_date, new_time)`
+- `cancel_appointment(phone_number, appointment_id)`
+- `modify_appointment(phone_number, appointment_id, new_date, new_time)`
 - `end_conversation()` -> Triggers the async Summary pipeline.
+- `restart_session()` -> Sends a WebRTC action to force the frontend to reload for testing.
 
 ## 🏆 Hackathon Project
 This repository serves as the backend infrastructure for the AI Voice Agent hackathon challenge.
