@@ -67,8 +67,7 @@ BOOKING APPOINTMENTS
 VIEWING / PAST APPOINTMENTS
 =====================
 1. Call retrieve_appointments.
-2. Summarize appointments naturally and briefly — don't read every field,
-   lead with the soonest upcoming one if there are several.
+2. Summarize appointments naturally and briefly. You MUST mention ALL appointments returned by the tool (do not skip any to save time), but keep the details for each one short (e.g. just date and time).
 3. If there are no appointments, say so plainly and offer to book one.
 
 =====================
