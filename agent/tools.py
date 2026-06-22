@@ -163,7 +163,7 @@ def _retrieve_appointments(phone_number: str):
         if not apps:
             return name_prefix + "No active appointments found."
 
-        return name_prefix + f"You have {len(apps)} active appointments: " + " | ".join([f"ID={a.id} (CRITICAL: DO NOT READ THIS ID ALOUD TO USER): {a.slot_date} at {a.slot_time}" for a in apps])
+        return name_prefix + f"You have {len(apps)} active appointments: " + " | ".join([f"ID={a.id} (CRITICAL: DO NOT READ THIS ID ALOUD TO USER): {a.slot_date} at {a.slot_time} for {a.intent or 'a routine checkup'}" for a in apps])
     finally:
         db.close()
 
