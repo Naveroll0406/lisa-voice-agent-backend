@@ -155,7 +155,10 @@ def _retrieve_appointments(phone_number: str):
         if not user:
             return "User not found."
 
-        apps = db.query(Appointment).filter(Appointment.user_id == user.id, Appointment.status == "booked").all()
+        apps = db.query(Appointment).filter(
+            Appointment.user_id == user.id, 
+            Appointment.status == "booked"
+        ).order_by(Appointment.slot_date.asc(), Appointment.slot_time.asc()).all()
         name_prefix = f"[System Note: User name is {user.name or 'Unknown'}] "
         if not apps:
             return name_prefix + "No active appointments found."
